@@ -1,0 +1,27 @@
+# Assets (large model files)
+assets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Output
+results/
+*.wav
+*.mp3
+
+# OS
+.DS_Store
