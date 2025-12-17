@@ -120,7 +120,6 @@ class _TTSScreenState extends State<TTSScreen> {
     });
 
     List<double>? wav;
-    List<double>? duration;
 
     try {
       final result = await _textToSpeech!.call(
@@ -133,9 +132,6 @@ class _TTSScreenState extends State<TTSScreen> {
       wav = result['wav'] is List<double>
           ? result['wav']
           : (result['wav'] as List).cast<double>();
-      duration = result['duration'] is List<double>
-          ? result['duration']
-          : (result['duration'] as List).cast<double>();
           
       // Save to file
       final tempDir = await getTemporaryDirectory();
