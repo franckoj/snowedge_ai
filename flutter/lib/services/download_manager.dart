@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
@@ -34,7 +35,17 @@ class DownloadManager {
   final Map<String, CancelToken> _activeDownloads = {};
 
   /// Download a model
-  Stream<DownloadProgress> downloadModel(ModelInfo model) async* {
+  Stream<DownloadProgress> downloadModel(ModelInfo model) {
+    // Use a StreamController to bridge the callback-based progress to a stream
+    final controller = StreamController<DownloadProgress>();
+    
+    // We need to run the download logic in a separate future so we can return the stream immediately
+    _startDownload(model, controller);
+    
+    return controller.stream;
+  }
+
+  Future<void> _startDownload(ModelInfo model, StreamController<DownloadProgress> controller) async {
     try {
       _logger.i('Starting download: ${model.name}');
 
@@ -51,6 +62,7 @@ class DownloadManager {
 
       int lastTime = DateTime.now().millisecondsSinceEpoch;
       int lastReceived = 0;
+      String currentSpeed = '0 KB/s';
 
       try {
         await _dio.download(
@@ -60,27 +72,34 @@ class DownloadManager {
           onReceiveProgress: (received, total) {
             final now = DateTime.now().millisecondsSinceEpoch;
             final timeDiff = (now - lastTime) / 1000.0; // seconds
-            final receivedDiff = received - lastReceived;
-
-            String speed = '0 KB/s';
+            
+            // Update speed calculation every 500ms
             if (timeDiff > 0.5) {
-              // Update speed every 500ms
+              final receivedDiff = received - lastReceived;
               final speedBytes = receivedDiff / timeDiff;
+              
               if (speedBytes < 1024 * 1024) {
-                speed = '${(speedBytes / 1024).toStringAsFixed(1)} KB/s';
+                currentSpeed = '${(speedBytes / 1024).toStringAsFixed(1)} KB/s';
               } else {
-                speed = '${(speedBytes / (1024 * 1024)).toStringAsFixed(2)} MB/s';
+                currentSpeed = '${(speedBytes / (1024 * 1024)).toStringAsFixed(2)} MB/s';
               }
+              
               lastTime = now;
               lastReceived = received;
             }
 
             // Don't divide by zero
             final percentage = total > 0 ? (received / total * 100) : 0.0;
-
-            // Stream progress
-            // Note: This won't actually stream in this implementation
-            // We'll need to use a StreamController for real streaming
+            
+            // Add progress to stream
+            if (!controller.isClosed) {
+              controller.add(DownloadProgress(
+                received: received,
+                total: total,
+                percentage: percentage,
+                speed: currentSpeed,
+              ));
+            }
           },
         );
 
@@ -94,21 +113,40 @@ class DownloadManager {
         ModelManager().markAsDownloaded(model.id, saveFile);
 
         // Yield final progress
-        yield DownloadProgress(
-          received: model.sizeBytes,
-          total: model.sizeBytes,
-          percentage: 100.0,
-          speed: '0 KB/s',
-        );
+        if (!controller.isClosed) {
+          controller.add(DownloadProgress(
+            received: model.sizeBytes,
+            total: model.sizeBytes,
+            percentage: 100.0,
+            speed: '0 KB/s',
+          ));
+          await controller.close();
+        }
 
         _logger.i('Model downloaded successfully: ${model.name}');
+      } catch (e) {
+        if (!controller.isClosed) {
+           // Don't treat cancellation as an error for the stream if possible, 
+           // but traditionally we just throw/addError.
+           // If 'e' is DioExceptionType.cancel, it might be cleaner to just close.
+           if (e is DioException && e.type == DioExceptionType.cancel) {
+             // Just close, maybe send a specific event if needed, but for now just close.
+             // Actually, usually streams error on cancel.
+           }
+           controller.addError(e);
+           await controller.close();
+        }
+        rethrow;
       } finally {
         _activeDownloads.remove(model.id);
       }
     } catch (e) {
       _logger.e('Download failed', error: e);
       _activeDownloads.remove(model.id);
-      rethrow;
+      if (!controller.isClosed) {
+        controller.addError(e);
+        await controller.close();
+      }
     }
   }
 

@@ -160,21 +160,66 @@ class _AIChatScreenState extends State<AIChatScreen> {
     setState(() => _isGenerating = true);
 
     try {
+      // Simplified prompt format for debugging
+      // final formattedPrompt = '<|im_start|>system\nYou are a helpful AI assistant.<|im_end|>\n<|im_start|>user\n$question<|im_end|>\n<|im_start|>assistant\n';
+      // Fallback to simple format
+      final formattedPrompt = 'User: $question\nAssistant:';
+
       final config = GenerationConfig(
         maxTokens: _maxTokens,
         temperature: _temperature,
       );
 
-      final response = await _runtime!.generate(question, config);
-      _addMessage(ChatMessage(text: response, isUser: false));
+      // Add a placeholder message for the response
+      final responseMessage = ChatMessage(text: '', isUser: false);
+      _addMessage(responseMessage);
+
+      // Track the index of this message
+      final messageIndex = _messages.length - 1;
+      final buffer = StringBuffer();
+
+      // Stream the response
+      await for (final token in _runtime!.generateStream(formattedPrompt, config)) {
+        buffer.write(token);
+        
+        setState(() {
+          _messages[messageIndex] = ChatMessage(
+            text: buffer.toString(),
+            isUser: false,
+          );
+        });
+
+        // Auto-scroll to bottom periodically (every few tokens or on each token)
+        // For smoother UX, we can check if we are already at the bottom
+        if (_scrollController.hasClients) {
+             // Only scroll if we were arguably at the bottom. 
+             // Or just simple scroll to bottom:
+             _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      }
     } catch (e) {
       logger.e('Error generating response', error: e);
-      _addMessage(
-        ChatMessage(
-          text: 'Sorry, I encountered an error: $e',
-          isUser: false,
-        ),
-      );
+      
+      // If we started streaming, we might have a partial message.
+      // We can append error info or update status.
+      if (_messages.last.isUser == false && _messages.last.text.isNotEmpty) {
+         // Append error to existing partial response
+         final currentText = _messages.last.text;
+         setState(() {
+           _messages.last = ChatMessage(
+             text: '$currentText\n\n[Error: $e]',
+             isUser: false,
+           );
+         });
+      } else {
+        // Just add error message
+        _addMessage(
+          ChatMessage(
+            text: 'Sorry, I encountered an error: $e',
+            isUser: false,
+          ),
+        );
+      }
     } finally {
       setState(() => _isGenerating = false);
     }
