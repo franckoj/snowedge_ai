@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_sdk/llm_helper.dart';
 import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/model_info.dart';
+import '../services/inference_runtime.dart';
+import '../services/onnx_runtime.dart';
+import '../services/llamacpp_runtime.dart';
+import '../services/model_manager.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_message_widget.dart';
 import '../widgets/quality_slider.dart';
+import 'model_selection_screen.dart';
 
 final logger = Logger();
 
@@ -19,49 +25,96 @@ class _AIChatScreenState extends State<AIChatScreen> {
   final TextEditingController _questionController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
+  final ModelManager _modelManager = ModelManager();
 
-  LLMInference? _llmModel;
+  InferenceRuntime? _runtime;
+  ModelInfo? _selectedModel;
   bool _isLoading = false;
   bool _isGenerating = false;
-  String _status = 'Initializing...';
+  String _status = 'No model loaded';
 
   // Generation parameters
-  int _maxTokens = 100;
+  int _maxTokens = 256;
   double _temperature = 0.7;
 
   @override
   void initState() {
     super.initState();
-    _loadModel();
+    _loadLastSelectedModel();
   }
 
-  Future<void> _loadModel() async {
+  Future<void> _loadLastSelectedModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    final modelId = prefs.getString('last_selected_model');
+
+    if (modelId != null) {
+      await _modelManager.getAvailableModels();
+      final model = _modelManager.getModelById(modelId);
+
+      if (model != null && _modelManager.isModelDownloaded(modelId)) {
+        await _loadModel(model);
+      } else {
+        _showWelcomeMessage();
+      }
+    } else {
+      _showWelcomeMessage();
+    }
+  }
+
+  void _showWelcomeMessage() {
+    _addMessage(
+      ChatMessage(
+        text: 'Welcome! Tap the model icon above to select and download an AI model.',
+        isUser: false,
+      ),
+    );
+  }
+
+  Future<void> _selectModel() async {
+    final model = await Navigator.push<ModelInfo>(
+      context,
+      MaterialPageRoute(builder: (context) => const ModelSelectionScreen()),
+    );
+
+    if (model != null) {
+      await _loadModel(model);
+    }
+  }
+
+  Future<void> _loadModel(ModelInfo model) async {
     setState(() {
       _isLoading = true;
-      _status = 'Loading AI model...';
+      _status = 'Loading ${model.name}...';
     });
 
     try {
-      // NOTE: For demo purposes, we'll show the UI without a real model
-      // In production, uncomment this and provide an actual ONNX model:
-      // _llmModel = await LLMInference.load(
-      //   'assets/llm_models/model.onnx',
-      //   vocabPath: 'assets/llm_models/vocab.json',
-      //   maxLength: 512,
-      // );
+      // Unload previous model
+      if (_runtime != null) {
+        await _runtime!.unload();
+      }
 
-      // Simulate model loading for demo
-      await Future.delayed(const Duration(seconds: 2));
+      // Create appropriate runtime
+      _runtime = model.runtime == RuntimeType.onnx
+          ? OnnxInferenceRuntime()
+          : LlamaCppInferenceRuntime();
+
+      // Load model
+      await _runtime!.loadModel(model);
+
+      // Save preference
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_selected_model', model.id);
 
       setState(() {
+        _selectedModel = model;
         _isLoading = false;
         _status = 'Ready';
       });
 
-      // Add welcome message
+      // Add confirmation message
       _addMessage(
         ChatMessage(
-          text: 'Hello! I\'m your local AI assistant. Ask me anything!\n\nNote: This is a demo UI. To enable real inference, please add an ONNX model to assets/llm_models/',
+          text: 'Loaded ${model.name}. How can I help you?',
           isUser: false,
         ),
       );
@@ -69,7 +122,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       logger.e('Error loading model', error: e, stackTrace: stackTrace);
       setState(() {
         _isLoading = false;
-        _status = 'Error: $e';
+        _status = 'Error loading model';
       });
 
       if (mounted) {
@@ -93,6 +146,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
       return;
     }
 
+    if (_runtime == null || !_runtime!.isLoaded) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a model first')),
+      );
+      return;
+    }
+
     // Add user message
     _addMessage(ChatMessage(text: question, isUser: true));
     _questionController.clear();
@@ -100,25 +160,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
     setState(() => _isGenerating = true);
 
     try {
-      if (_llmModel != null) {
-        // Real inference
-        final response = await _llmModel!.generate(
-          question,
-          maxNewTokens: _maxTokens,
-          temperature: _temperature,
-        );
+      final config = GenerationConfig(
+        maxTokens: _maxTokens,
+        temperature: _temperature,
+      );
 
-        _addMessage(ChatMessage(text: response, isUser: false));
-      } else {
-        // Demo response
-        await Future.delayed(const Duration(seconds: 2));
-        _addMessage(
-          ChatMessage(
-            text: _generateDemoResponse(question),
-            isUser: false,
-          ),
-        );
-      }
+      final response = await _runtime!.generate(question, config);
+      _addMessage(ChatMessage(text: response, isUser: false));
     } catch (e) {
       logger.e('Error generating response', error: e);
       _addMessage(
@@ -129,23 +177,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
       );
     } finally {
       setState(() => _isGenerating = false);
-    }
-  }
-
-  String _generateDemoResponse(String question) {
-    // Simple demo responses
-    final lowerQuestion = question.toLowerCase();
-
-    if (lowerQuestion.contains('hello') || lowerQuestion.contains('hi')) {
-      return 'Hello! How can I assist you today?';
-    } else if (lowerQuestion.contains('how are you')) {
-      return 'I\'m functioning well, thank you! I\'m a local AI assistant running on your device.';
-    } else if (lowerQuestion.contains('what') && lowerQuestion.contains('you')) {
-      return 'I\'m a local AI assistant that runs entirely on your device using ONNX Runtime. Once you add a language model, I can answer questions, help with tasks, and more - all without internet!';
-    } else if (lowerQuestion.contains('2+2') || lowerQuestion.contains('2 + 2')) {
-      return 'The answer is 4!';
-    } else {
-      return 'That\'s an interesting question! This is a demo response. To get real AI-powered answers, please add an ONNX language model to the assets/llm_models/ directory.';
     }
   }
 
@@ -170,20 +201,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
     setState(() {
       _messages.clear();
     });
-
-    // Add welcome message back
-    _addMessage(
-      ChatMessage(
-        text: 'Chat cleared. How can I help you?',
-        isUser: false,
-      ),
-    );
   }
 
   @override
   void dispose() {
     _questionController.dispose();
     _scrollController.dispose();
+    _runtime?.dispose();
     super.dispose();
   }
 
@@ -191,12 +215,18 @@ class _AIChatScreenState extends State<AIChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI Q&A'),
+        title: Text(_selectedModel?.name ?? 'AI Q&A'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          // Model selector
+          IconButton(
+            icon: const Icon(Icons.model_training_rounded),
+            onPressed: _selectModel,
+            tooltip: 'Select model',
+          ),
           if (_messages.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded),
@@ -213,19 +243,28 @@ class _AIChatScreenState extends State<AIChatScreen> {
       body: Column(
         children: [
           // Status indicator
-          if (_isLoading)
+          if (_selectedModel != null)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(AppTheme.spacingSm),
-              color: AppTheme.primary.withOpacity(0.1),
+              color: _isLoading
+                  ? AppTheme.primary.withOpacity(0.1)
+                  : Colors.green.withOpacity(0.1),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+                  if (_isLoading)
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  if (!_isLoading)
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 16,
+                      color: Colors.green.shade700,
+                    ),
                   const SizedBox(width: AppTheme.spacingSm),
                   Text(
                     _status,
@@ -237,7 +276,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
           // Chat messages
           Expanded(
-            child: _messages.isEmpty && !_isLoading
+            child: _messages.isEmpty
                 ? _buildEmptyState()
                 : ListView.builder(
                     controller: _scrollController,
@@ -302,12 +341,14 @@ class _AIChatScreenState extends State<AIChatScreen> {
                       hintText: 'Ask me anything...',
                       border: OutlineInputBorder(),
                     ),
-                    enabled: !_isLoading && !_isGenerating,
+                    enabled: !_isLoading && !_isGenerating && _runtime != null,
                   ),
                 ),
                 const SizedBox(width: AppTheme.spacingSm),
                 FloatingActionButton(
-                  onPressed: _isLoading || _isGenerating ? null : _sendMessage,
+                  onPressed: _isLoading || _isGenerating || _runtime == null
+                      ? null
+                      : _sendMessage,
                   mini: true,
                   child: Icon(
                     _isGenerating ? Icons.stop_rounded : Icons.send_rounded,
@@ -329,25 +370,39 @@ class _AIChatScreenState extends State<AIChatScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.psychology_rounded,
+              _selectedModel == null
+                  ? Icons.model_training_rounded
+                  : Icons.psychology_rounded,
               size: 80,
               color: AppTheme.textSecondary.withOpacity(0.3),
             ),
             const SizedBox(height: AppTheme.spacingMd),
             Text(
-              'No messages yet',
+              _selectedModel == null
+                  ? 'No model selected'
+                  : 'No messages yet',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     color: AppTheme.textSecondary,
                   ),
             ),
             const SizedBox(height: AppTheme.spacingSm),
             Text(
-              'Start a conversation with your local AI assistant',
+              _selectedModel == null
+                  ? 'Tap the model icon above to select and download a model'
+                  : 'Start a conversation with your local AI assistant',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: AppTheme.textSecondary.withOpacity(0.7),
                   ),
               textAlign: TextAlign.center,
             ),
+            if (_selectedModel == null) ...[
+              const SizedBox(height: AppTheme.spacingLg),
+              FilledButton.icon(
+                onPressed: _selectModel,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Browse Models'),
+              ),
+            ],
           ],
         ),
       ),
@@ -369,17 +424,33 @@ class _AIChatScreenState extends State<AIChatScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Generation Settings',
-                style: Theme.of(context).textTheme.titleLarge,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Generation Settings',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  if (_selectedModel != null)
+                    Chip(
+                      label: Text(_selectedModel!.runtimeName),
+                      avatar: Icon(
+                        _selectedModel!.runtime == RuntimeType.onnx
+                            ? Icons.memory_rounded
+                            : Icons.hub_rounded,
+                        size: 16,
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: AppTheme.spacingLg),
               QualitySlider(
                 label: 'Max Tokens',
                 value: _maxTokens.toDouble(),
                 min: 50,
-                max: 500,
-                divisions: 9,
+                max: 1000,
+                divisions: 19,
                 onChanged: (value) {
                   setModalState(() => _maxTokens = value.toInt());
                   setState(() => _maxTokens = value.toInt());
