@@ -100,10 +100,10 @@ async def text_to_speech_endpoint(
         if not text or len(text.strip()) == 0:
             raise HTTPException(status_code=400, detail="Text cannot be empty")
         
-        if len(text) > 5000:
+        if len(text) > 2000:
             raise HTTPException(
                 status_code=400,
-                detail="Text is too long (max 5000 characters)"
+                detail="Text is too long (max 2000 characters)"
             )
         
         # Load voice style (cache for performance)
