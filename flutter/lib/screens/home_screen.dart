@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/feature_card.dart';
 import 'tts_screen.dart';
+import 'ai_chat_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -44,11 +45,17 @@ class HomeScreen extends StatelessWidget {
                   );
                 },
               ),
-              const FeatureCard(
-                title: 'Image Creation',
-                subtitle: 'Generate stunning images from text',
-                icon: Icons.image_rounded,
-                isActive: false,
+              FeatureCard(
+                title: 'AI Q&A',
+                subtitle: 'Ask questions to local AI model',
+                icon: Icons.psychology_rounded,
+                isActive: true,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const AIChatScreen()),
+                  );
+                },
               ),
               const FeatureCard(
                 title: 'Video Generation',
