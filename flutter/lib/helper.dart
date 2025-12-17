@@ -107,6 +107,13 @@ class TextToSpeech {
     };
   }
 
+  Future<void> release() async {
+    await dpOrt.close();
+    await textEncOrt.close();
+    await vectorEstOrt.close();
+    await vocoderOrt.close();
+  }
+
   Future<Map<String, dynamic>> _infer(
       List<String> textList, Style style, int totalStep,
       {double speed = 1.05}) async {
@@ -388,11 +395,16 @@ Future<Style> loadVoiceStyle(List<String> paths) async {
 
 Future<Map<String, dynamic>> _loadCfgs(String onnxDir) async {
   final path = '$onnxDir/tts.json';
-  final json = jsonDecode(await rootBundle.loadString(path));
-  return json as Map<String, dynamic>;
+  final jsonString = path.startsWith('assets/')
+      ? await rootBundle.loadString(path)
+      : File(path).readAsStringSync();
+  return jsonDecode(jsonString) as Map<String, dynamic>;
 }
 
 Future<String> copyModelToFile(String path) async {
+  if (!path.startsWith('assets/')) {
+    return path;
+  }
   final byteData = await rootBundle.load(path);
   final tempDir = await getApplicationCacheDirectory();
   final modelPath = '${tempDir.path}/${path.split("/").last}';
@@ -413,8 +425,9 @@ Future<Map<String, OrtSession>> _loadOnnxAll(String dir) async {
 
   final sessions = await Future.wait(models.map((name) async {
     final path = await copyModelToFile('$dir/$name.onnx');
-    logger.d('Loading $name.onnx');
-    return ort.createSessionFromAsset(path);
+    logger.d('Loading ${path.split('/').last}');
+    // createSession expects a file path
+    return ort.createSession(path);
   }));
 
   return {

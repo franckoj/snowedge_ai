@@ -11,6 +11,7 @@ import '../theme/app_theme.dart';
 import '../widgets/chat_message_widget.dart';
 import '../widgets/quality_slider.dart';
 import 'model_selection_screen.dart';
+import '../utils/memory_helper.dart';
 
 final logger = Logger();
 
@@ -136,6 +137,25 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
   }
 
+  Future<void> _unloadModel() async {
+    if (_runtime != null) {
+      await _runtime!.unload();
+      await MemoryHelper.logMemoryUsage('After Unload');
+      
+      setState(() {
+        _selectedModel = null;
+        _status = 'No model loaded';
+        // _messages.clear();
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Model unloaded')),
+        );
+      }
+    }
+  }
+
   Future<void> _sendMessage() async {
     final question = _questionController.text.trim();
 
@@ -158,12 +178,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
     _questionController.clear();
 
     setState(() => _isGenerating = true);
+    await MemoryHelper.logMemoryUsage('Start Generation');
 
     try {
-      // Simplified prompt format for debugging
-      // final formattedPrompt = '<|im_start|>system\nYou are a helpful AI assistant.<|im_end|>\n<|im_start|>user\n$question<|im_end|>\n<|im_start|>assistant\n';
-      // Fallback to simple format
-      final formattedPrompt = 'User: $question\nAssistant:';
+      // Format prompt with ChatML template (standard for Qwen and many modern models)
+      final formattedPrompt = '<|im_start|>system\nYou are a helpful AI assistant.<|im_end|>\n<|im_start|>user\n$question<|im_end|>\n<|im_start|>assistant\n';
 
       final config = GenerationConfig(
         maxTokens: _maxTokens,
@@ -222,6 +241,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       }
     } finally {
       setState(() => _isGenerating = false);
+      await MemoryHelper.logMemoryUsage('End Generation');
     }
   }
 
@@ -266,6 +286,19 @@ class _AIChatScreenState extends State<AIChatScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          // Memory Check
+          IconButton(
+            icon: const Icon(Icons.memory_rounded),
+            tooltip: 'Log Memory Usage',
+            onPressed: () => MemoryHelper.logMemoryUsage('Manual Check'),
+          ),
+          // Unload Model
+          if (_runtime != null && _runtime!.isLoaded)
+             IconButton(
+              icon: const Icon(Icons.eject_rounded),
+              tooltip: 'Unload Model',
+              onPressed: _unloadModel,
+            ),
           // Model selector
           IconButton(
             icon: const Icon(Icons.model_training_rounded),

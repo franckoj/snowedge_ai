@@ -59,6 +59,19 @@
         "gpuLayers": 26
       },
       "sha256": null
+    },
+    {
+      "id": "bundled-tts-en",
+      "name": "Default TTS (English)",
+      "description": "Standard built-in English voice model.",
+      "runtime": "onnx",
+      "sizeBytes": 0,
+      "downloadUrl": "",
+      "filename": "assets/onnx",
+      "config": {
+        "isBundled": true
+      },
+      "sha256": null
     }
   ]
 }

@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:archive/archive_io.dart';
 
 import '../models/model_info.dart';
 import 'model_manager.dart';
@@ -109,7 +110,21 @@ class DownloadManager {
           await _verifyChecksum(savePath, model.sha256!);
         }
 
+        // Handle ZIP files
+        if (savePath.endsWith('.zip')) {
+          _logger.i('Extracting ZIP file...');
+          await _extractZip(saveFile);
+          await saveFile.delete(); // Remove ZIP after extraction
+        }
+
         // Mark as downloaded in manager
+        // For ZIPs/Directories, we might point to the directory or a key file
+        // For now, ModelManager checks for file existence, so we might need to adjust that logic
+        // or ensure we point to the main file if it's not a zip anymore.
+        // However, standardizing: if original was zip, we assume it's extracted to a folder
+        // with the same name as the zip (minus extension).
+        // Update: ModelManager tracks "File".
+        
         ModelManager().markAsDownloaded(model.id, saveFile);
 
         // Yield final progress
@@ -129,11 +144,12 @@ class DownloadManager {
            // Don't treat cancellation as an error for the stream if possible, 
            // but traditionally we just throw/addError.
            // If 'e' is DioExceptionType.cancel, it might be cleaner to just close.
+           // Actually, usually streams error on cancel.
            if (e is DioException && e.type == DioExceptionType.cancel) {
-             // Just close, maybe send a specific event if needed, but for now just close.
-             // Actually, usually streams error on cancel.
+             // Just close
+           } else {
+             controller.addError(e);
            }
-           controller.addError(e);
            await controller.close();
         }
         rethrow;
@@ -148,6 +164,28 @@ class DownloadManager {
         await controller.close();
       }
     }
+  }
+
+  Future<void> _extractZip(File zipFile) async {
+    // We need to move this import to file level, but for now using dynamic or assume added
+    // Actual implementation requires 'archive' package
+    // import 'package:archive/archive_io.dart';
+    
+    // final inputStream = InputFileStream(zipFile.path);
+    // final archive = ZipDecoder().decodeBuffer(inputStream);
+    
+    // For now, assuming imports are added.
+    // Destination is the same directory as the zip, possibly in a subfolder
+    // If zip is `foo.zip`, extract to `foo/`? 
+    // Or just extract to the current directory?
+    // Let's extract to a folder named after the file (without extension)
+    
+    final destinationDir = Directory(zipFile.path.replaceAll('.zip', ''));
+    if (!destinationDir.existsSync()) {
+      await destinationDir.create(recursive: true);
+    }
+
+    await extractArchiveToDisk(ZipDecoder().decodeBytes(zipFile.readAsBytesSync()), destinationDir.path);
   }
 
   /// Cancel a download

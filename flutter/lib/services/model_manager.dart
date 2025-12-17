@@ -27,12 +27,33 @@ class ModelManager {
       final modelsList = json['models'] as List;
 
       _models = modelsList.map((m) => ModelInfo.fromJson(m as Map<String, dynamic>)).toList();
+      
+      // Fallback: Inject bundled TTS model if missing (handles stale asset cache)
+      if (!_models!.any((m) => m.id == 'bundled-tts-en')) {
+        _logger.w('Bundled model missing from catalog, injecting fallback');
+        _models!.add(
+          ModelInfo(
+            id: 'bundled-tts-en',
+            name: 'Default TTS (English)',
+            description: 'Standard built-in English voice model.',
+            runtime: RuntimeType.onnx,
+            sizeBytes: 0,
+            downloadUrl: '',
+            filename: 'assets/onnx',
+            config: {'isBundled': true},
+          ),
+        );
+      }
 
       // Check which models are already downloaded
       await _checkDownloadedModels();
 
       return _models!;
     } catch (e) {
+      _logger.e('Failed to load model catalog', error: e);
+      return [];
+    }
+  }
       _logger.e('Failed to load model catalog', error: e);
       return [];
     }
@@ -59,7 +80,15 @@ class ModelManager {
 
   /// Check if a model is downloaded
   bool isModelDownloaded(String modelId) {
-    return _downloadedModels.containsKey(modelId);
+    if (_downloadedModels.containsKey(modelId)) return true;
+    
+    // Check for bundled models
+    final model = getModelById(modelId);
+    if (model != null && model.config['isBundled'] == true) {
+      return true;
+    }
+    
+    return false;
   }
 
   /// Get model by ID

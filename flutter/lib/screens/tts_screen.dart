@@ -4,12 +4,16 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_sdk/helper.dart';
 import 'package:logger/logger.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/voice_selector.dart';
 import '../widgets/quality_slider.dart';
 import '../widgets/generate_button.dart';
 import '../widgets/audio_player_widget.dart';
+import '../models/model_info.dart';
+import '../services/model_manager.dart';
+import '../screens/tts_model_selection_screen.dart';
 
 final logger = Logger();
 
@@ -36,12 +40,119 @@ class _TTSScreenState extends State<TTSScreen> {
   bool _isPlaying = false;
   String? _lastGeneratedFilePath;
   String _selectedVoice = 'F1';
+  
+  ModelInfo? _loadedModelInfo;
 
   @override
   void initState() {
     super.initState();
-    _loadModels();
+    _loadLastModel();
     _setupAudioPlayerListeners();
+  }
+
+  Future<void> _loadLastModel() async {
+     // Try to load last selected model
+    final prefs = await SharedPreferences.getInstance();
+    String? lastId = prefs.getString('last_tts_model_id');
+    
+    // Default to bundled model if no preference
+    lastId ??= 'bundled-tts-en';
+
+    if (lastId != null) {
+      try {
+        // Ensure catalog is loaded
+        await ModelManager().getAvailableModels();
+        final model = ModelManager().getModelById(lastId);
+        if (model != null && ModelManager().isModelDownloaded(lastId)) {
+          await _loadSpecificModel(model);
+          return;
+        }
+      } catch (e) {
+        // Model might not exist in catalog or not downloaded
+        logger.w('Failed to load last model: $lastId', error: e);
+      }
+    }
+    
+    // If we still haven't loaded anything, try loading the bundled model explicitly
+    try {
+       await ModelManager().getAvailableModels();
+       final bundled = ModelManager().getModelById('bundled-tts-en');
+       if (bundled != null) {
+         await _loadSpecificModel(bundled);
+         return;
+       }
+    } catch (e) {
+       logger.e('Failed to load bundled fallback', error: e);
+    }
+    
+    // If no model loaded, update status
+    setState(() {
+      _status = 'Please select a voice model';
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _showModelSelector() async {
+    final ModelInfo? selectedModel = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const TTSModelSelectionScreen()),
+    );
+
+    if (selectedModel != null) {
+      await _loadSpecificModel(selectedModel);
+    }
+  }
+
+  Future<void> _loadSpecificModel(ModelInfo model) async {
+    setState(() {
+      _isLoading = true;
+      _status = 'Loading ${model.name}...';
+    });
+    
+    try {
+      String modelPath;
+      
+      if (model.config['isBundled'] == true) {
+        // Bundled model in assets
+        modelPath = model.filename; // Should be 'assets/onnx'
+      } else {
+        // Downloaded model
+        final dir = await getApplicationDocumentsDirectory();
+        final modelDirName = model.filename.replaceAll('.zip', '');
+        modelPath = '${dir.path}/models/onnx/$modelDirName';
+      }
+
+      // Load ONNX models from that path
+      _textToSpeech = await loadTextToSpeech(modelPath, useGpu: false);
+      
+      // Load default voice style
+      await _loadVoiceStyle(_selectedVoice);
+
+      // Save preference
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_tts_model_id', model.id);
+
+      setState(() {
+        _loadedModelInfo = model;
+        _isLoading = false;
+        _status = 'Ready: ${model.name}';
+      });
+    } catch (e, stackTrace) {
+      logger.e('Error loading model', error: e, stackTrace: stackTrace);
+      setState(() {
+        _isLoading = false;
+        _status = 'Error: $e';
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load model: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
   }
 
   void _setupAudioPlayerListeners() {
@@ -60,36 +171,22 @@ class _TTSScreenState extends State<TTSScreen> {
     });
   }
 
-  Future<void> _loadModels() async {
-    setState(() {
-      _isLoading = true;
-      _status = 'Loading AI models...';
-    });
-
-    try {
-      // Load ONNX models
-      _textToSpeech = await loadTextToSpeech('assets/onnx', useGpu: false);
+  Future<void> _unloadModels() async {
+    if (_textToSpeech != null) {
+      await _textToSpeech!.release();
+      _textToSpeech = null;
+      _style = null;
       
-      // Load default voice style
-      await _loadVoiceStyle(_selectedVoice);
+      // Force garbage collection of large buffers if possible
+      setState(() {
+        _status = 'Models unloaded';
+        _isLoading = false;
+        _loadedModelInfo = null;
+      });
 
-      setState(() {
-        _isLoading = false;
-        _status = 'Ready';
-      });
-    } catch (e, stackTrace) {
-      logger.e('Error loading models', error: e, stackTrace: stackTrace);
-      setState(() {
-        _isLoading = false;
-        _status = 'Error: $e';
-      });
-      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load models: $e'),
-            backgroundColor: AppTheme.error,
-          ),
+          const SnackBar(content: Text('TTS models unloaded')),
         );
       }
     }
@@ -189,6 +286,7 @@ class _TTSScreenState extends State<TTSScreen> {
 
   @override
   void dispose() {
+    _textToSpeech?.release();
     _textController.dispose();
     _audioPlayer.dispose();
     super.dispose();
@@ -203,7 +301,23 @@ class _TTSScreenState extends State<TTSScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          if (_textToSpeech == null)
+            IconButton(
+              icon: const Icon(Icons.manage_search_rounded),
+              tooltip: 'Manage Models',
+              onPressed: _showModelSelector,
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.eject_rounded),
+              tooltip: 'Unload Model',
+              onPressed: _unloadModels,
+            ),
+        ],
       ),
+      // ... body
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppTheme.spacingXl),
         child: Column(

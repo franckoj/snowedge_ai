@@ -47,12 +47,23 @@ class LlamaCppInferenceRuntime implements InferenceRuntime {
         Llama.libraryPath = '';
       }
 
+      // Configure ModelParams
+      final modelParams = ModelParams();
+      modelParams.nGpuLayers = model.config['gpuLayers'] as int? ?? 0;
+
+      // Configure ContextParams
+      final contextParams = ContextParams();
+      contextParams.nCtx = model.config['contextLength'] as int? ?? 2048;
+      contextParams.nPredict = -1; // Unlimited generation
+      contextParams.nBatch = 512;
+
       // Create Llama instance with model
+      // Constructor: Llama(String modelPath, [ModelParams? modelParams, ContextParams? contextParams, ...])
       _llama = Llama(
         modelPath,
+        modelParams,
+        contextParams,
       );
-
-      _currentModel = model;
       _logger.i('Model loaded successfully');
     } on FileSystemException catch (e) {
       _logger.e('llama.cpp library not found', error: e);

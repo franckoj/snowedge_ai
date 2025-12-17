@@ -105,14 +105,15 @@ class ModelCard extends StatelessWidget {
                       label: const Text('Cancel'),
                     ),
                   if (isDownloaded) ...[
-                    OutlinedButton.icon(
-                      onPressed: onDelete,
-                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
-                      label: const Text('Delete'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.error,
+                    if (model.config['isBundled'] != true)
+                      OutlinedButton.icon(
+                        onPressed: onDelete,
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                        label: const Text('Delete'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.error,
+                        ),
                       ),
-                    ),
                     const SizedBox(width: AppTheme.spacingSm),
                     FilledButton.icon(
                       onPressed: onSelect,
