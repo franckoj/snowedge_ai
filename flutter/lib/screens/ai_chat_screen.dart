@@ -13,7 +13,7 @@ import '../widgets/quality_slider.dart';
 import 'model_selection_screen.dart';
 import '../utils/memory_helper.dart';
 
-final logger = Logger();
+final logger = Logger(level: Level.all);
 
 class AIChatScreen extends StatefulWidget {
   const AIChatScreen({super.key});
@@ -83,6 +83,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   }
 
   Future<void> _loadModel(ModelInfo model) async {
+    print('DEBUG: AIChatScreen - Starting to load model: ${model.name}');
     setState(() {
       _isLoading = true;
       _status = 'Loading ${model.name}...';
@@ -120,6 +121,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
         ),
       );
     } catch (e, stackTrace) {
+      print('DEBUG: AIChatScreen - ERROR loading model: $e');
+      print('DEBUG: AIChatScreen - StackTrace: $stackTrace');
       logger.e('Error loading model', error: e, stackTrace: stackTrace);
       setState(() {
         _isLoading = false;
@@ -496,67 +499,69 @@ class _AIChatScreenState extends State<AIChatScreen> {
         ),
       ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingXl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Generation Settings',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                  ),
-                  if (_selectedModel != null)
-                    Chip(
-                      label: Text(_selectedModel!.runtimeName),
-                      avatar: Icon(
-                        _selectedModel!.runtime == RuntimeType.onnx
-                            ? Icons.memory_rounded
-                            : Icons.hub_rounded,
-                        size: 16,
+        builder: (context, setModalState) => SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(AppTheme.spacingXl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Generation Settings',
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: AppTheme.spacingLg),
-              QualitySlider(
-                label: 'Max Tokens',
-                value: _maxTokens.toDouble(),
-                min: 50,
-                max: 1000,
-                divisions: 19,
-                onChanged: (value) {
-                  setModalState(() => _maxTokens = value.toInt());
-                  setState(() => _maxTokens = value.toInt());
-                },
-                labelFormatter: (val) => val.toInt().toString(),
-              ),
-              const SizedBox(height: AppTheme.spacingMd),
-              QualitySlider(
-                label: 'Temperature',
-                value: _temperature,
-                min: 0.1,
-                max: 1.5,
-                divisions: 14,
-                onChanged: (value) {
-                  setModalState(() => _temperature = value);
-                  setState(() => _temperature = value);
-                },
-                labelFormatter: (val) => val.toStringAsFixed(1),
-              ),
-              const SizedBox(height: AppTheme.spacingMd),
-              Text(
-                'Higher temperature = more creative responses\nLower temperature = more focused responses',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTheme.textSecondary,
-                    ),
-              ),
-              const SizedBox(height: AppTheme.spacingLg),
-            ],
+                    if (_selectedModel != null)
+                      Chip(
+                        label: Text(_selectedModel!.runtimeName),
+                        avatar: Icon(
+                          _selectedModel!.runtime == RuntimeType.onnx
+                              ? Icons.memory_rounded
+                              : Icons.hub_rounded,
+                          size: 16,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacingLg),
+                QualitySlider(
+                  label: 'Max Tokens',
+                  value: _maxTokens.toDouble(),
+                  min: 50,
+                  max: 1000,
+                  divisions: 19,
+                  onChanged: (value) {
+                    setModalState(() => _maxTokens = value.toInt());
+                    setState(() => _maxTokens = value.toInt());
+                  },
+                  labelFormatter: (val) => val.toInt().toString(),
+                ),
+                const SizedBox(height: AppTheme.spacingMd),
+                QualitySlider(
+                  label: 'Temperature',
+                  value: _temperature,
+                  min: 0.1,
+                  max: 1.5,
+                  divisions: 14,
+                  onChanged: (value) {
+                    setModalState(() => _temperature = value);
+                    setState(() => _temperature = value);
+                  },
+                  labelFormatter: (val) => val.toStringAsFixed(1),
+                ),
+                const SizedBox(height: AppTheme.spacingMd),
+                Text(
+                  'Higher temperature = more creative responses\nLower temperature = more focused responses',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTheme.textSecondary,
+                      ),
+                ),
+                const SizedBox(height: AppTheme.spacingLg),
+              ],
+            ),
           ),
         ),
       ),

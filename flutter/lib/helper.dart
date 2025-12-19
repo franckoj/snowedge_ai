@@ -8,6 +8,7 @@ import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
 
 final logger = Logger(
+  level: Level.all,
   printer: PrettyPrinter(methodCount: 0, errorMethodCount: 5, lineLength: 80),
 );
 

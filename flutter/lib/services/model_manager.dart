@@ -54,10 +54,7 @@ class ModelManager {
       return [];
     }
   }
-      _logger.e('Failed to load model catalog', error: e);
-      return [];
-    }
-  }
+
 
   /// Check which models are downloaded
   Future<void> _checkDownloadedModels() async {

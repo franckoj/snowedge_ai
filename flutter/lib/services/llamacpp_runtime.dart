@@ -29,22 +29,38 @@ class LlamaCppInferenceRuntime implements InferenceRuntime {
 
       // Get model path
       final modelPath = await _getModelPath(model);
+      print('DEBUG: Checking LLM model at: $modelPath');
+      _logger.i('Checking model at: $modelPath');
 
-      if (!File(modelPath).existsSync()) {
+      final file = File(modelPath);
+      final exists = await file.exists();
+      print('DEBUG: Model file exists: $exists');
+      _logger.i('Model file exists: $exists');
+
+      if (!exists) {
+        print('DEBUG: ERROR - Model file not found at $modelPath');
         throw RuntimeException('Model file not found: $modelPath');
       }
+      
+      print('DEBUG: Model file size: ${await file.length()} bytes');
+      _logger.i('Model file size: ${await file.length()} bytes');
 
       // Set library path (platform-specific)
       if (Platform.isMacOS) {
-        // Use Homebrew-installed llama.cpp library
-        Llama.libraryPath = '/opt/homebrew/lib/libllama.dylib';
+        // Try Homebrew path first, then fallback to local
+        if (File('/opt/homebrew/lib/libllama.dylib').existsSync()) {
+          Llama.libraryPath = '/opt/homebrew/lib/libllama.dylib';
+        } else {
+          Llama.libraryPath = 'libllama.dylib';
+        }
       } else if (Platform.isLinux) {
         Llama.libraryPath = 'libllama.so';
       } else if (Platform.isWindows) {
         Llama.libraryPath = 'llama.dll';
-      } else if (Platform.isAndroid || Platform.isIOS) {
-        // Mobile platforms handle library loading differently
-        Llama.libraryPath = '';
+      } else if (Platform.isIOS) {
+        Llama.libraryPath = 'llama';
+      } else if (Platform.isAndroid) {
+        Llama.libraryPath = 'libllama.so';
       }
 
       // Configure ModelParams
@@ -59,11 +75,23 @@ class LlamaCppInferenceRuntime implements InferenceRuntime {
 
       // Create Llama instance with model
       // Constructor: Llama(String modelPath, [ModelParams? modelParams, ContextParams? contextParams, ...])
-      _llama = Llama(
-        modelPath,
-        modelParams,
-        contextParams,
-      );
+      try {
+        _llama = Llama(
+          modelPath,
+          modelParams,
+          contextParams,
+        );
+      } on ArgumentError catch (e) {
+        if (e.message.toString().contains('Failed to load dynamic library') && Platform.isIOS) {
+          throw RuntimeException(
+            'Llama native library not found on iOS.\n\n'
+            'To fix this, the native library needs to be bundled with the app.\n'
+            'For now, please use ONNX models which are fully supported!',
+            e
+          );
+        }
+        rethrow;
+      }
       _logger.i('Model loaded successfully');
     } on FileSystemException catch (e) {
       _logger.e('llama.cpp library not found', error: e);
@@ -76,6 +104,8 @@ class LlamaCppInferenceRuntime implements InferenceRuntime {
         e,
       );
     } catch (e, stackTrace) {
+      print('DEBUG: ERROR loading model: $e');
+      print('DEBUG: StackTrace: $stackTrace');
       _logger.e('Failed to load model', error: e, stackTrace: stackTrace);
       await unload();
       throw RuntimeException('Failed to load llama.cpp model: $e', e);

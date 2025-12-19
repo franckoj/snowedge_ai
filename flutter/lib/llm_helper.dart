@@ -28,22 +28,27 @@ class SimpleTokenizer {
   });
 
   static Future<SimpleTokenizer> load(String vocabPath) async {
-    final json = jsonDecode(
-      vocabPath.startsWith('assets/')
+    try {
+      final jsonString = vocabPath.startsWith('assets/')
           ? await rootBundle.loadString(vocabPath)
-          : File(vocabPath).readAsStringSync(),
-    );
+          : await File(vocabPath).readAsString();
+          
+      final json = jsonDecode(jsonString);
 
-    final vocab = Map<String, int>.from(json['vocab'] ?? {});
-    final reverseVocab = vocab.map((k, v) => MapEntry(v, k));
+      final vocab = Map<String, int>.from(json['vocab'] ?? {});
+      final reverseVocab = vocab.map((k, v) => MapEntry(v, k));
 
-    return SimpleTokenizer._(
-      vocab: vocab,
-      reverseVocab: reverseVocab,
-      padTokenId: json['pad_token_id'] ?? 0,
-      bosTokenId: json['bos_token_id'] ?? 1,
-      eosTokenId: json['eos_token_id'] ?? 2,
-    );
+      return SimpleTokenizer._(
+        vocab: vocab,
+        reverseVocab: reverseVocab,
+        padTokenId: json['pad_token_id'] ?? 0,
+        bosTokenId: json['bos_token_id'] ?? 1,
+        eosTokenId: json['eos_token_id'] ?? 2,
+      );
+    } catch (e) {
+      llmLogger.w('Failed to load vocab from $vocabPath, falling back to basic tokenizer: $e');
+      return createBasic();
+    }
   }
 
   /// Create a basic character-level tokenizer (fallback if no vocab file)
@@ -131,7 +136,7 @@ class LLMInference {
     // Load ONNX model
     final ort = OnnxRuntime();
     final modelFilePath = await _copyModelToFile(modelPath);
-    final session = await ort.createSessionFromAsset(modelFilePath);
+    final session = await ort.createSession(modelFilePath);
 
     llmLogger.i('LLM model loaded successfully');
 
@@ -316,16 +321,29 @@ class Random {
 
 // Helper to copy model to file system
 Future<String> _copyModelToFile(String path) async {
-  final byteData = await rootBundle.load(path);
-  final tempDir = await getApplicationCacheDirectory();
-  final modelPath = '${tempDir.path}/${path.split("/").last}';
-
-  final file = File(modelPath);
-  if (!file.existsSync()) {
-    await file.writeAsBytes(byteData.buffer.asUint8List());
+  // If it's already an absolute path to a file that exists, just return it
+  if (File(path).existsSync()) {
+    return path;
   }
-  
-  return modelPath;
+
+  try {
+    final byteData = await rootBundle.load(path);
+    final tempDir = await getApplicationCacheDirectory();
+    final modelPath = '${tempDir.path}/${path.split("/").last}';
+
+    final file = File(modelPath);
+    if (!file.existsSync()) {
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+    }
+    
+    return modelPath;
+  } catch (e) {
+    if (path.startsWith('/')) {
+      // It was intended to be a file but doesn't exist
+      throw FileSystemException('Model file not found', path);
+    }
+    rethrow;
+  }
 }
 
 // Extension for power operation

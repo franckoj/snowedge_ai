@@ -61,6 +61,20 @@
       "sha256": null
     },
     {
+      "id": "qwen2.5-0.5b-onnx",
+      "name": "Qwen 2.5 0.5B (ONNX)",
+      "description": "ONNX version of Qwen 2.5. Highly compatible and stable on iOS.",
+      "runtime": "onnx",
+      "sizeBytes": 980000000,
+      "downloadUrl": "https://huggingface.co/onnx-community/Qwen2.5-0.5B-Instruct/resolve/main/onnx/model_q8.onnx",
+      "filename": "qwen2.5-0.5b-q8.onnx",
+      "config": {
+        "contextLength": 2048,
+        "vocabSize": 151936
+      },
+      "sha256": null
+    },
+    {
       "id": "bundled-tts-en",
       "name": "Default TTS (English)",
       "description": "Standard built-in English voice model.",

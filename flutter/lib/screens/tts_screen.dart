@@ -15,7 +15,7 @@ import '../models/model_info.dart';
 import '../services/model_manager.dart';
 import '../screens/tts_model_selection_screen.dart';
 
-final logger = Logger();
+final logger = Logger(level: Level.all);
 
 class TTSScreen extends StatefulWidget {
   const TTSScreen({super.key});

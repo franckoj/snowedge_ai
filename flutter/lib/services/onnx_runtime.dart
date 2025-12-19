@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:logger/logger.dart';
 import 'package:path_provider/path_provider.dart';
@@ -27,12 +28,13 @@ class OnnxInferenceRuntime implements InferenceRuntime {
     try {
       _logger.i('Loading ONNX model: ${model.name}');
 
-      final modelPath = await _getModelPath(model);
+      final bool isBundled = model.config['isBundled'] == true;
+      final modelPath = isBundled ? model.filename : await _getModelPath(model);
       final vocabPath = model.config['vocabPath'] as String?;
       final maxLength = model.config['contextLength'] as int? ?? 512;
       final vocabSize = model.config['vocabSize'] as int? ?? 32000;
 
-      if (!File(modelPath).existsSync()) {
+      if (!isBundled && !File(modelPath).existsSync()) {
         throw RuntimeException('Model file not found: $modelPath');
       }
 
@@ -74,9 +76,36 @@ class OnnxInferenceRuntime implements InferenceRuntime {
 
   @override
   Stream<String> generateStream(String prompt, GenerationConfig config) async* {
-    // ONNX helper doesn't support streaming yet, so we yield the complete response
-    final response = await generate(prompt, config);
-    yield response;
+    if (!isLoaded || _model == null) {
+      throw RuntimeException('No model loaded');
+    }
+
+    final controller = StreamController<String>();
+
+    // Start generation in the background
+    _model!.generate(
+      prompt,
+      maxNewTokens: config.maxTokens,
+      temperature: config.temperature,
+      topK: config.topK,
+      topP: config.topP,
+      onToken: (token) {
+        if (!controller.isClosed) {
+          controller.add(token);
+        }
+      },
+    ).then((_) {
+      if (!controller.isClosed) {
+        controller.close();
+      }
+    }).catchError((e) {
+      if (!controller.isClosed) {
+        controller.addError(e);
+        controller.close();
+      }
+    });
+
+    yield* controller.stream;
   }
 
   @override
