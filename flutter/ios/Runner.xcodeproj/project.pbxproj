@@ -16,8 +16,6 @@
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
 		A1AD2B740F53303520934ED7 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F2F010AA3CD2268630603BA5 /* Pods_Runner.framework */; };
-		D2B1A2C3D4E5F6A7B8C9D0E2 /* llama.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = D2B1A2C3D4E5F6A7B8C9D0E1 /* llama.xcframework */; };
-		D2B1A2C3D4E5F6A7B8C9D0E3 /* llama.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D2B1A2C3D4E5F6A7B8C9D0E1 /* llama.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -37,7 +35,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				D2B1A2C3D4E5F6A7B8C9D0E3 /* llama.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -69,7 +66,6 @@
 		CCCA80228867D79A0C2DB66D /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		EE144752E6F07C6F76F801B4 /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		F2F010AA3CD2268630603BA5 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		D2B1A2C3D4E5F6A7B8C9D0E1 /* llama.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = llama.xcframework; path = Frameworks/llama.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,7 +82,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1AD2B740F53303520934ED7 /* Pods_Runner.framework in Frameworks */,
-				D2B1A2C3D4E5F6A7B8C9D0E2 /* llama.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -152,7 +147,6 @@
 		B307A93DB5FCC695959EFE3E /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				D2B1A2C3D4E5F6A7B8C9D0E1 /* llama.xcframework */,
 				F2F010AA3CD2268630603BA5 /* Pods_Runner.framework */,
 				EE144752E6F07C6F76F801B4 /* Pods_RunnerTests.framework */,
 			);
